@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Docker Demo: DB + Redis + Celery</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin-bottom: .25rem; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 1rem; margin: 1rem 0; }
+    .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+    input, button { padding: .5rem .75rem; border-radius: 8px; border: 1px solid #ccc; }
+    button { cursor: pointer; }
+    code { background: #f6f6f6; padding: .2rem .4rem; border-radius: 4px; }
+    ul { padding-left: 1.2rem; }
+  </style>
+</head>
+<body>
+  <h1>Docker Demo</h1>
+  <p>Test <b>PostgreSQL</b>, <b>Redis</b>, and <b>Celery</b> from one page.</p>
+
+  <!-- DB card -->
+  <div class="card">
+    <h2>Database (PostgreSQL)</h2>
+    <form class="row" action="{% url 'demo:create_person' %}" method="post">
+      {% csrf_token %}
+      {{ form.name }}
+      <button type="submit">Save name</button>
+    </form>
+    <p>Last 10 people:</p>
+    <ul>
+      {% for p in people %}
+        <li>{{ p.name }} <small>({{ p.created_at }})</small></li>
+      {% empty %}
+        <li>No names yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Celery card -->
+  <div class="card">
+    <h2>Celery (Redis broker)</h2>
+    <div class="row">
+      <input id="x" type="number" placeholder="x" />
+      <input id="y" type="number" placeholder="y" />
+      <button id="btn-add">Queue add(x, y)</button>
+    </div>
+    <p>Task: <code id="task-id">—</code></p>
+    <p>Status: <code id="task-status">—</code></p>
+    <p>Result: <code id="task-result">—</code></p>
+  </div>
+
+  <!-- Redis card -->
+  <div class="card">
+    <h2>Redis (set/get)</h2>
+    <div class="row">
+      <input id="redis-key" placeholder="key" value="test:key" />
+      <input id="redis-value" placeholder="value" value="hello" />
+      <button id="btn-set">Set</button>
+      <button id="btn-get">Get</button>
+    </div>
+    <p>Response: <code id="redis-out">—</code></p>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Celery trigger
+$("btn-add").addEventListener("click", async (e) => {
+  e.preventDefault();
+  const x = $("x").value || "0";
+  const y = $("y").value || "0";
+  const res = await fetch("/trigger-add/", {
+    method: "POST",
+    headers: {"Content-Type":"application/x-www-form-urlencoded", "X-CSRFToken": getCookie("csrftoken")},
+    body: new URLSearchParams({x, y})
+  });
+  const data = await res.json();
+  $("task-id").textContent = data.task_id || "—";
+  $("task-status").textContent = data.status || "—";
+  $("task-result").textContent = "—";
+  // start polling
+  if (data.task_id) pollStatus(data.task_id);
+});
+
+async function pollStatus(taskId) {
+  const iv = setInterval(async () => {
+    const res = await fetch(`/task-status/?task_id=${encodeURIComponent(taskId)}`);
+    const d = await res.json();
+    $("task-status").textContent = d.state || "—";
+    if (d.state === "SUCCESS") {
+      $("task-result").textContent = d.result;
+      clearInterval(iv);
+    } else if (d.state === "FAILURE") {
+      $("task-result").textContent = d.error || "Error";
+      clearInterval(iv);
+    }
+  }, 800);
+}
+
+// Redis set/get
+$("btn-set").addEventListener("click", async (e) => {
+  e.preventDefault();
+  const key = $("redis-key").value;
+  const value = $("redis-value").value;
+  const res = await fetch(`/redis-set/?key=${encodeURIComponent(key)}&value=${encodeURIComponent(value)}`);
+  $("redis-out").textContent = await res.text();
+});
+
+$("btn-get").addEventListener("click", async (e) => {
+  e.preventDefault();
+  const key = $("redis-key").value;
+  const res = await fetch(`/redis-get/?key=${encodeURIComponent(key)}`);
+  $("redis-out").textContent = await res.text();
+});
+
+// CSRF helper for fetch POST
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+services:
+  web:
+    build: .
+    container_name: django_web_celery
+    command: bash -lc "python manage.py runserver 0.0.0.0:8000"  # dev auto-reload
+    # For prod: command: gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    volumes:
+      - ./app:/code/app
+      - ./static:/code/static
+      - ./media:/code/media
+    env_file: .env
+    ports:
+      - "8081:8000"        # host:container (non-default host port)
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  celery:
+    build: .
+    container_name: celery_worker
+    command: celery -A core worker -l info
+    volumes:
+      - ./app:/code/app
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+      - web
+    restart: unless-stopped
+
+  celery_beat:
+    build: .
+    container_name: celery_beat
+    command: celery -A core beat -l info
+    volumes:
+      - ./app:/code/app
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+      - web
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    container_name: postgres_db_celery
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "55432:5432"       # non-default host port
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: redis_celery
+    ports:
+      - "56379:6379"       # non-default host port
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: pgadmin_celery
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "55050:80"         # non-default host port
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

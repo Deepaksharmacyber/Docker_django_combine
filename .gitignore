@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.build/
+
+# Environments
+.env
+.env.*            # any env variants
+.venv/
+venv/
+
+# Django
+db.sqlite3
+media/
+static/           # ignore collected static in dev; keep if you want to commit some assets
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Docker
+*.log
